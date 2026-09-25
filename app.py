@@ -1,6 +1,6 @@
+from datetime import date
 import pandas as pd
 import streamlit as st
-from datetime import date
 
 # Configuração inicial da página
 st.set_page_config(
@@ -38,7 +38,6 @@ if "dados" not in st.session_state:
   if URL_SHEETS_CSV:
     st.session_state["dados"] = carregar_dados_sheets(URL_SHEETS_CSV)
   else:
-    # Base vazia caso o link não esteja preenchido ainda
     st.session_state["dados"] = pd.DataFrame()
 
 df = st.session_state["dados"]
@@ -56,7 +55,7 @@ if st.sidebar.button("Atualizar Dados do Sheets"):
 if not df.empty and "Status" not in df.columns:
   df["Status"] = "Solicitações"
 
-# Garante a existência de uma coluna de Data para o filtro
+# Identifica a coluna de data/carimbo
 coluna_data = None
 if not df.empty:
   for col in df.columns:
@@ -72,31 +71,26 @@ if not df.empty:
 st.sidebar.header("Filtros")
 
 if not df.empty and coluna_data:
-  # Tenta converter a coluna para data
   df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce")
   datas_disponiveis = df[coluna_data].dt.date.dropna().unique()
   datas_disponiveis = sorted(datas_disponiveis, reverse=True)
 
   opcoes_data = ["Todas as Datas"] + [str(d) for d in datas_disponiveis]
-  
-  # Define hoje como padrão, se existir na lista
+
+  # Define hoje como padrão
   hoje_str = str(date.today())
   indice_padrao = 0
   if hoje_str in opcoes_data:
-      indice_padrao = opcoes_data.index(hoje_str)
+    indice_padrao = opcoes_data.index(hoje_str)
 
   data_escolhida = st.sidebar.selectbox(
-      "Filtrar por Data do Envio", 
-      opcoes_data, 
-      index=indice_padrao
+      "Filtrar por Data do Envio", opcoes_data, index=indice_padrao
   )
 
   if data_escolhida != "Todas as Datas":
     df = df[df[coluna_data].dt.date.astype(str) == data_escolhida]
 else:
-  st.sidebar.info(
-      "Filtro de data indisponível (coluna de data não identificada ou dados vazios)."
-  )
+  st.sidebar.info("Filtro de data indisponível.")
 
 # ==========================================
 # 3. PAINÉIS SEPARADOS POR STATUS
@@ -107,10 +101,10 @@ if df.empty:
       " arquivo `app.py` para conectar ao seu Google Forms/Sheets."
   )
 else:
-  # Cria abas correspondentes aos painéis de status
   aba_solicitacoes, aba_ok, aba_nok, aba_standby = st.tabs(
       ["📥 Solicitações", "✅ OK (Aprovadas)", "❌ NOK (Reprovadas)", "⏳ Stand By"]
   )
+
 
   def renderizar_painel(status_alvo, container):
     with container:
@@ -126,30 +120,36 @@ else:
         st.info(f"Nenhuma bonificação com o estado '{status_alvo}'.")
       else:
         for index, row in df_filtrado.iterrows():
-          # Monta o título do cartão priorizando PDV, Revenda ou Cliente
-          titulo_card = f"Solicitação - {row.get(df.columns[1], 'Detalhes')}"
+          # Tenta buscar o código do PDV para colocar no título do cartão
+          titulo_card = "Solicitação de Bonificação"
           for col in df.columns:
             if "CÓDIGO DO PDV" in str(col).upper():
-                titulo_card = f"PDV: {str(row[col])}"
-                break
-            elif any(termo in str(col).lower() for termo in ["pdv", "revenda", "cliente"]):
-                titulo_card = f"{col}: {str(row[col])}"
-                break
+              titulo_card = f"PDV: {str(row[col])}"
+              break
 
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
-            
-            # Filtra as colunas para exibir apenas as desejadas
+
+            # Lista restrita apenas com as colunas que você deseja exibir
+            colunas_permitidas_keywords = [
+                "carimbo de data/hora",
+                "gerente de venda",
+                "código do rn responsável pelo pdv",
+                "código do pdv",
+                "código, nome e quantidade do item bonificado",
+                "justificativa",
+                "revenda",
+            ]
+
             colunas_para_exibir = []
             for col in df.columns:
-                if col == "Status":
-                    continue
-                # Remove a coluna específica da Ação/Bonificação
-                if "AÇÃO OU BONIFICAÇÃO" in str(col).upper() or "NÃO PRECISA REPETIR" in str(col).upper():
-                    continue
+              col_lower = str(col).lower()
+              if any(kw in col_lower for kw in colunas_permitidas_keywords):
                 colunas_para_exibir.append(col)
-                
+
             metade = len(colunas_para_exibir) // 2
+            if metade == 0:
+              metade = 1
 
             with col1:
               for col in colunas_para_exibir[:metade]:
@@ -161,11 +161,13 @@ else:
 
             st.markdown("---")
 
-            # Botão / Seletor para alterar o status
+            # Botão para alterar o status
             novo_status = st.selectbox(
                 "Mover para:",
                 ["Solicitações", "OK", "NOK", "STAND BY"],
-                index=["Solicitações", "OK", "NOK", "STAND BY"].index(status_alvo),
+                index=["Solicitações", "OK", "NOK", "STAND BY"].index(
+                    status_alvo
+                ),
                 key=f"status_acao_{index}",
             )
 
@@ -176,7 +178,7 @@ else:
               st.success("Estado alterado com sucesso! O painel foi atualizado.")
               st.rerun()
 
-  # Renderiza cada painel na sua aba correspondente
+
   renderizar_painel("Solicitações", aba_solicitacoes)
   renderizar_painel("OK", aba_ok)
   renderizar_painel("NOK", aba_nok)
