@@ -8,139 +8,159 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Painel Dinâmico de Aprovação de Solicitações")
+st.title("Painel de Aprovação de Bonificações")
 st.markdown(
-    "Este painel adapta-se a **qualquer** Google Forms conectado ao Google"
-    " Sheets. Carregue os dados ou utilize uma ligação direta via CSV"
-    " publicado."
+    "Gerencie e aprove as solicitações enviadas através do Google Forms."
 )
 
-# Inicializa o session_state se não existir
-if "dados" not in st.session_state:
-  # Começa vazio para não engessar com dados fictícios
-  st.session_state["dados"] = pd.DataFrame()
+# ==========================================
+# 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS
+# ==========================================
+# Cole abaixo o link CSV publicado do seu Google Sheets para automatizar a leitura:
+URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAOwaWn8P5n_eILUcSwzlpgLxlR_cyMrUPenHZaqdlYuOBrARCE_UgPJ2l0j1hR4yTs0/pub?output=csv"
 
-# Barra lateral para configuração da fonte de dados e filtros
-st.sidebar.header("Conexão e Dados")
 
-# Opção 1: Link direto do Google Sheets publicado (CSV)
-st.sidebar.subheader("1. Conexão via Link do Google Sheets")
-st.sidebar.markdown(
-    "No seu Google Sheets: **Partilhar > Publicar na Web > Valores separados por"
-    " vírgula (.csv)**. Cole o link abaixo:"
-)
-url_sheets = st.sidebar.text_input(
-    "URL do CSV publicado", placeholder="https://docs.google.com/spreadsheets/..."
-)
-
-if st.sidebar.button("Carregar via Link"):
-  if url_sheets:
-    try:
-      df_carregado = pd.read_csv(url_sheets)
-      if "Status" not in df_carregado.columns:
-        df_carregado["Status"] = "Solicitações"
-      if "ID" not in df_carregado.columns:
-        df_carregado.insert(0, "ID", range(1, len(df_carregado) + 1))
-      st.session_state["dados"] = df_carregado
-      st.sidebar.success("Dados carregados com sucesso do Sheets!")
-      st.rerun()
-    except Exception as e:
-      st.sidebar.error(f"Erro ao ligar ao link: {e}")
-
-st.sidebar.markdown("---")
-
-# Opção 2: Upload manual do CSV (como backup rápido)
-st.sidebar.subheader("2. Ou Carregar Ficheiro CSV")
-ficheiro_csv = st.sidebar.file_uploader("Carregar CSV exportado", type=["csv"])
-
-if ficheiro_csv is not None:
+@st.cache_data(ttl=60)  # Atualiza os dados a cada 60 segundos
+def carregar_dados_sheets(url):
+  if not url:
+    return pd.DataFrame()
   try:
-    df_carregado = pd.read_csv(ficheiro_csv)
-    if "Status" not in df_carregado.columns:
-      df_carregado["Status"] = "Solicitações"
-    if "ID" not in df_carregado.columns:
-      df_carregado.insert(0, "ID", range(1, len(df_carregado) + 1))
-    st.session_state["dados"] = df_carregado
-    st.sidebar.success("Ficheiro carregado com sucesso!")
-    st.rerun()
+    df = pd.read_csv(url)
+    return df
   except Exception as e:
-    st.sidebar.error(f"Erro ao ler o ficheiro: {e}")
+    st.error(f"Erro ao carregar dados do Sheets: {e}")
+    return pd.DataFrame()
 
-# Verifica se existem dados carregados
+
+# Inicializa os dados no session_state
+if "dados" not in st.session_state:
+  if URL_SHEETS_CSV:
+    st.session_state["dados"] = carregar_dados_sheets(URL_SHEETS_CSV)
+  else:
+    # Base vazia ou mock inicial caso o link não esteja preenchido ainda
+    st.session_state["dados"] = pd.DataFrame()
+
 df = st.session_state["dados"]
 
+# Botão para atualizar dados manualmente do Sheets
+if st.sidebar.button("Atualizar Dados do Sheets"):
+  if URL_SHEETS_CSV:
+    st.session_state["dados"] = carregar_dados_sheets(URL_SHEETS_CSV)
+    st.success("Dados atualizados com sucesso!")
+    st.rerun()
+  else:
+    st.warning("Por favor, insira a URL_SHEETS_CSV no código do aplicativo.")
+
+# Garante a existência da coluna de Status
+if not df.empty and "Status" not in df.columns:
+  df["Status"] = "Solicitações"
+
+# Garante a existência de uma coluna de Data para o filtro (procura por colunas de carimbo/data)
+coluna_data = None
+if not df.empty:
+  for col in df.columns:
+    if any(
+        termo in col.lower() for termo in ["carimbo", "data", "timestamp"]
+    ):
+      coluna_data = col
+      break
+
+# ==========================================
+# 2. FILTROS DE DATA E GESTÃO NA BARRA LATERAL
+# ==========================================
+st.sidebar.header("Filtros")
+
+if not df.empty and coluna_data:
+  # Tenta converter a coluna para data
+  df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce")
+  datas_disponiveis = df[coluna_data].dt.date.dropna().unique()
+  datas_disponiveis = sorted(datas_disponiveis, reverse=True)
+
+  opcoes_data = ["Todas as Datas"] + [str(d) for d in datas_disponiveis]
+  data_escolhida = st.sidebar.selectbox("Filtrar por Data do Envio", opcoes_data)
+
+  if data_escolhida != "Todas as Datas":
+    df = df[df[coluna_data].dt.date.astype(str) == data_escolhida]
+else:
+  st.sidebar.info(
+      "Filtro de data indisponível (coluna de data não identificada automaticamente"
+      " ou dados vazios)."
+  )
+
+# ==========================================
+# 3 e 4. PAINÉIS SEPARADOS POR STATUS
+# ==========================================
 if df.empty:
   st.warning(
-      "⚠️ Nenhum dado encontrado. Por favor, cole o link do Google Sheets"
-      " publicado na web ou carregue um ficheiro CSV na barra lateral."
+      "⚠️ Nenhum dado encontrado. Adicione a `URL_SHEETS_CSV` diretamente no"
+      " arquivo `app.py` para conectar ao seu Google Forms/Sheets."
   )
 else:
-  # Filtro por Status
-  st.sidebar.markdown("---")
-  st.sidebar.header("Filtros")
-  status_disponiveis = ["Todas", "Solicitações", "OK", "NOK", "STAND BY"]
-  status_filtro = st.sidebar.selectbox("Filtrar por Status", status_disponiveis)
+  # Cria abas correspondentes aos painéis de status
+  aba_solicitacoes, aba_ok, aba_nok, aba_standby = st.tabs(
+      ["📥 Solicitações", "✅ OK (Aprovadas)", "❌ NOK (Reprovadas)", "⏳ Stand By"]
+  )
 
-  if status_filtro != "Todas" and "Status" in df.columns:
-    df_filtrado = df[df["Status"] == status_filtro]
-  else:
-    df_filtrado = df
 
-  st.subheader(f"Lista de Solicitações ({len(df_filtrado)})")
-
-  # Exibição dinâmica de cada linha do Forms como um cartão expansível
-  for index, row in df_filtrado.iterrows():
-    # Pega o primeiro campo relevante (ex: ID ou primeira coluna de texto) para o título do expander
-    status_atual = row.get("Status", "Solicitações")
-
-    # Tenta encontrar uma coluna com identificador ou usa o índice
-    titulo_card = f"[{status_atual}] Linha / ID: {row.get('ID', index + 1)}"
-    # Se houver uma coluna parecida com 'PDV' ou 'Nome', usa para enriquecer o título
-    for col in df.columns:
-      if any(
-          termo in col.lower()
-          for termo in ["pdv", "nome", "revenda", "item", "cliente"]
-      ):
-        titulo_card = (
-            f"[{status_atual}] {col}: {str(row[col])[:40]}"  # noqa: E501
-        )
-        break
-
-    with st.expander(titulo_card):
-      # Mostra dinamicamente todas as colunas que vieram do Google Forms
-      col1, col2 = st.columns(2)
-      colunas = list(df.columns)
-      metade = len(colunas) // 2
-
-      with col1:
-        for col in colunas[:metade]:
-          if col != "Status":
-            st.write(f"**{col}:** {row[col]}")
-
-      with col2:
-        for col in colunas[metade:]:
-          if col != "Status":
-            st.write(f"**{col}:** {row[col]}")
-
-      st.markdown("---")
-
-      # Campo de alteração de estado dinâmico
-      idx_atual = (
-          ["Solicitações", "OK", "NOK", "STAND BY"].index(status_atual)
-          if status_atual in ["Solicitações", "OK", "NOK", "STAND BY"]
-          else 0
+  def renderizar_painel(status_alvo, container):
+    with container:
+      df_filtrado = (
+          df[df["Status"] == status_alvo]
+          if "Status" in df.columns
+          else pd.DataFrame()
       )
 
-      novo_status = st.selectbox(
-          "Alterar Estado",
-          ["Solicitações", "OK", "NOK", "STAND BY"],
-          index=idx_atual,
-          key=f"status_{row.get('ID', index)}",
-      )
+      st.markdown(f"### Total nesta categoria: {len(df_filtrado)}")
 
-      if novo_status != status_atual:
-        st.session_state["dados"].loc[
-            st.session_state["dados"].index == index, "Status"
-        ] = novo_status
-        st.success("Estado atualizado com sucesso!")
-        st.rerun()
+      if df_filtrado.empty:
+        st.info(f"Nenhuma bonificação com o estado '{status_alvo}'.")
+      else:
+        for index, row in df_filtrado.iterrows():
+          # Monta o título do cartão de forma limpa (sem IDs numéricos desnecessários)
+          titulo_card = f"Solicitação - {row.get(df.columns[1], 'Detalhes')}"
+          for col in df.columns:
+            if any(
+                termo in col.lower()
+                for termo in ["pdv", "revenda", "item", "cliente", "gerente"]
+            ):
+              titulo_card = f"{col}: {str(row[col])}"
+              break
+
+          with st.expander(titulo_card):
+            col1, col2 = st.columns(2)
+            colunas = [c for c in df.columns if c != "Status"]
+            metade = len(colunas) // 2
+
+            with col1:
+              for col in colunas[:metade]:
+                st.write(f"**{col}:** {row[col]}")
+
+            with col2:
+              for col in colunas[metade:]:
+                st.write(f"**{col}:** {row[col]}")
+
+            st.markdown("---")
+
+            # Botão / Seletor para alterar o status e mover para o painel correspondente
+            novo_status = st.selectbox(
+                "Mover para:",
+                ["Solicitações", "OK", "NOK", "STAND BY"],
+                index=["Solicitações", "OK", "NOK", "STAND BY"].index(
+                    status_alvo
+                ),
+                key=f"status_acao_{index}",
+            )
+
+            if novo_status != status_alvo:
+              st.session_state["dados"].loc[
+                  st.session_state["dados"].index == index, "Status"
+              ] = novo_status
+              st.success("Estado alterado com sucesso! O painel foi atualizado.")
+              st.rerun()
+
+
+  # Renderiza cada painel na sua aba correspondente
+  renderizar_painel("Solicitações", aba_solicitacoes)
+  renderizar_painel("OK", aba_ok)
+  renderizar_painel("NOK", aba_nok)
+  renderizar_painel("STAND BY", aba_standby)
