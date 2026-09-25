@@ -18,7 +18,7 @@ st.markdown(
 # 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS
 # ==========================================
 # Cole abaixo o link CSV publicado do seu Google Sheets para automatizar a leitura:
-URL_SHEETS_CSV = ""  # Ex: "https://docs.google.com/spreadsheets/d/.../export?format=csv"
+URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAOwaWn8P5n_eILUcSwzlpgLxlR_cyMrUPenHZaqdlYuOBrARCE_UgPJ2l0j1hR4yTs0/pub?output=csv"
 
 
 @st.cache_data(ttl=60)  # Atualiza os dados a cada 60 segundos
