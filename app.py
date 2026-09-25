@@ -130,7 +130,7 @@ else:
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
 
-            # Lista restrita apenas com as colunas que você deseja exibir
+            # Lista restrita apenas com as colunas permitidas
             colunas_permitidas_keywords = [
                 "carimbo de data/hora",
                 "gerente de venda",
@@ -144,6 +144,13 @@ else:
             colunas_para_exibir = []
             for col in df.columns:
               col_lower = str(col).lower()
+              # Filtro restrito para ignorar termos antigos/indesejados
+              if any(
+                  "ação" in col_lower or "não precisa" in col_lower
+                  for _ in [1]
+              ):
+                continue
+
               if any(kw in col_lower for kw in colunas_permitidas_keywords):
                 colunas_para_exibir.append(col)
 
