@@ -19,15 +19,16 @@ st.markdown(
 # 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS E APPS SCRIPT
 # ==========================================
 URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAOwaWn8P5n_eILUcSwzlpgLxlR_cyMrUPenHZaqdlYuOBrARCE_UgPJ2l0j1hR4yTs0/pub?output=csv"
-URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbyDyPmnIebm10Usav60IwsGLScLFDOTDyBBAd800pHIiQTK9PNoiNkdU3LHGqGsSjGO/exec"  # Cole a URL do Web App publicado do Apps Script
+URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbyDyPmnIebm10Usav60IwsGLScLFDOTDyBBAd800pHIiQTK9PNoiNkdU3LHGqGsSjGO/exec"
 
 
-@st.cache_data(ttl=30)  # Atualiza os dados periodicamente
+@st.cache_data(ttl=30)
 def carregar_dados_sheets(url):
   if not url:
     return pd.DataFrame()
   try:
     df = pd.read_csv(url)
+    df["_excel_row"] = range(2, len(df) + 2)
     return df
   except Exception as e:
     st.error(f"Erro ao carregar dados do Sheets: {e}")
@@ -75,7 +76,6 @@ if not df.empty and coluna_data:
 
   opcoes_data = ["Todas as Datas"] + [str(d) for d in datas_disponiveis]
 
-  # Define hoje como padrão
   hoje_str = str(date.today())
   indice_padrao = 0
   if hoje_str in opcoes_data:
@@ -86,8 +86,11 @@ if not df.empty and coluna_data:
   )
 
   if data_escolhida != "Todas as Datas":
-    df = df[df[coluna_data].dt.date.astype(str) == data_escolhida]
+    df_filtrado_data = df[df[coluna_data].dt.date.astype(str) == data_escolhida]
+  else:
+    df_filtrado_data = df
 else:
+  df_filtrado_data = df
   st.sidebar.info("Filtro de data indisponível.")
 
 # ==========================================
@@ -106,43 +109,45 @@ else:
 
   def renderizar_painel(status_alvo, container):
     with container:
-      df_filtrado = (
-          df[df["Status"] == status_alvo]
-          if "Status" in df.columns
+      df_status = (
+          df_filtrado_data[df_filtrado_data["Status"] == status_alvo]
+          if "Status" in df_filtrado_data.columns
           else pd.DataFrame()
       )
 
-      st.markdown(f"### Total nesta categoria: {len(df_filtrado)}")
+      st.markdown(f"### Total nesta categoria: {len(df_status)}")
 
-      if df_filtrado.empty:
+      if df_status.empty:
         st.info(f"Nenhuma bonificação com o estado '{status_alvo}'.")
       else:
-        for index, row in df_filtrado.iterrows():
-          # Tenta buscar o código do PDV para colocar no título do cartão
+        for index, row in df_status.iterrows():
+          # Tenta buscar o código/nome do PDV para colocar no título do cartão
           titulo_card = "Solicitação de Bonificação"
           for col in df.columns:
-            if "CÓDIGO DO PDV" in str(col).upper():
+            if "PDV" in str(col).upper():
               titulo_card = f"PDV: {str(row[col])}"
               break
 
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
 
-            # Lista restrita apenas com as colunas permitidas
+            # Lista atualizada com os nomes exatos das perguntas do Forms
             colunas_permitidas_keywords = [
                 "carimbo de data/hora",
                 "gerente de venda",
-                "código do rn responsável pelo pdv",
+                "código do rn responsável",
+                "código e nome do pdv",
                 "código do pdv",
-                "código, nome e quantidade do item bonificado",
+                "item bonificado",
                 "justificativa",
                 "revenda",
             ]
 
             colunas_para_exibir = []
             for col in df.columns:
+              if col == "_excel_row":
+                continue
               col_lower = str(col).lower()
-              # Filtro restrito para ignorar termos antigos/indesejados
               if "ação" in col_lower or "não precisa" in col_lower:
                 continue
 
@@ -163,7 +168,6 @@ else:
 
             st.markdown("---")
 
-            # Botão para alterar o status
             novo_status = st.selectbox(
                 "Mover para:",
                 ["Solicitações", "OK", "NOK", "STAND BY"],
@@ -174,19 +178,21 @@ else:
             )
 
             if novo_status != status_alvo:
-              # Salva diretamente na planilha através do Apps Script
+              linha_excel = int(row["_excel_row"])
+
               if URL_APPS_SCRIPT:
                 try:
                   requests.post(
                       URL_APPS_SCRIPT,
-                      json={"rowIndex": index, "novoStatus": novo_status},
+                      json={"rowExcel": linha_excel, "novoStatus": novo_status},
                       timeout=10,
                   )
                 except Exception as e:
                   st.error(f"Erro ao salvar na planilha: {e}")
 
               st.session_state["dados"].loc[
-                  st.session_state["dados"].index == index, "Status"
+                  st.session_state["dados"]["_excel_row"] == linha_excel,
+                  "Status",
               ] = novo_status
               st.success(
                   "Estado alterado e salvo na planilha com sucesso! O painel"
