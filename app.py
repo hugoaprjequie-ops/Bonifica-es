@@ -19,7 +19,7 @@ st.markdown(
 # 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS E APPS SCRIPT
 # ==========================================
 URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAOwaWn8P5n_eILUcSwzlpgLxlR_cyMrUPenHZaqdlYuOBrARCE_UgPJ2l0j1hR4yTs0/pub?output=csv"
-URL_APPS_SCRIPT = "https://script.google.com/macros/s/SEU_ID_DE_IMPLANTACAO_AQUI/exec"  # Cole a URL do Web App publicado do Apps Script
+URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbyDyPmnIebm10Usav60IwsGLScLFDOTDyBBAd800pHIiQTK9PNoiNkdU3LHGqGsSjGO/exec"  # Cole a URL do Web App publicado do Apps Script
 
 
 @st.cache_data(ttl=30)  # Atualiza os dados periodicamente
