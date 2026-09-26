@@ -1,5 +1,6 @@
 from datetime import date
 import pandas as pd
+import requests
 import streamlit as st
 
 # Configuração inicial da página
@@ -15,13 +16,13 @@ st.markdown(
 )
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS
+# 1. CONFIGURAÇÃO DA CONEXÃO DIRETA COM O SHEETS E APPS SCRIPT
 # ==========================================
-# Cole abaixo o link CSV publicado do seu Google Sheets para automatizar a leitura:
 URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAOwaWn8P5n_eILUcSwzlpgLxlR_cyMrUPenHZaqdlYuOBrARCE_UgPJ2l0j1hR4yTs0/pub?output=csv"
+URL_APPS_SCRIPT = "https://script.google.com/macros/s/SEU_ID_DE_IMPLANTACAO_AQUI/exec"  # Cole a URL do Web App publicado do Apps Script
 
 
-@st.cache_data(ttl=60)  # Atualiza os dados a cada 60 segundos
+@st.cache_data(ttl=30)  # Atualiza os dados periodicamente
 def carregar_dados_sheets(url):
   if not url:
     return pd.DataFrame()
@@ -35,10 +36,7 @@ def carregar_dados_sheets(url):
 
 # Inicializa os dados no session_state
 if "dados" not in st.session_state:
-  if URL_SHEETS_CSV:
-    st.session_state["dados"] = carregar_dados_sheets(URL_SHEETS_CSV)
-  else:
-    st.session_state["dados"] = pd.DataFrame()
+  st.session_state["dados"] = carregar_dados_sheets(URL_SHEETS_CSV)
 
 df = st.session_state["dados"]
 
@@ -97,8 +95,8 @@ else:
 # ==========================================
 if df.empty:
   st.warning(
-      "⚠️ Nenhum dado encontrado. Adicione a `URL_SHEETS_CSV` diretamente no"
-      " arquivo `app.py` para conectar ao seu Google Forms/Sheets."
+      "⚠️ Nenhum dado encontrado. Verifique a URL do Sheets nas configurações do"
+      " código."
   )
 else:
   aba_solicitacoes, aba_ok, aba_nok, aba_standby = st.tabs(
@@ -145,10 +143,7 @@ else:
             for col in df.columns:
               col_lower = str(col).lower()
               # Filtro restrito para ignorar termos antigos/indesejados
-              if any(
-                  "ação" in col_lower or "não precisa" in col_lower
-                  for _ in [1]
-              ):
+              if "ação" in col_lower or "não precisa" in col_lower:
                 continue
 
               if any(kw in col_lower for kw in colunas_permitidas_keywords):
@@ -179,10 +174,24 @@ else:
             )
 
             if novo_status != status_alvo:
+              # Salva diretamente na planilha através do Apps Script
+              if URL_APPS_SCRIPT:
+                try:
+                  requests.post(
+                      URL_APPS_SCRIPT,
+                      json={"rowIndex": index, "novoStatus": novo_status},
+                      timeout=10,
+                  )
+                except Exception as e:
+                  st.error(f"Erro ao salvar na planilha: {e}")
+
               st.session_state["dados"].loc[
                   st.session_state["dados"].index == index, "Status"
               ] = novo_status
-              st.success("Estado alterado com sucesso! O painel foi atualizado.")
+              st.success(
+                  "Estado alterado e salvo na planilha com sucesso! O painel"
+                  " foi atualizado."
+              )
               st.rerun()
 
 
