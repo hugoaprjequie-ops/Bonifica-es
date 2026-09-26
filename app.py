@@ -121,7 +121,6 @@ else:
         st.info(f"Nenhuma bonificação com o estado '{status_alvo}'.")
       else:
         for index, row in df_status.iterrows():
-          # Tenta buscar o código/nome do PDV para colocar no título do cartão
           titulo_card = "Solicitação de Bonificação"
           for col in df.columns:
             if "PDV" in str(col).upper():
@@ -131,7 +130,6 @@ else:
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
 
-            # Lista atualizada com os nomes exatos das perguntas do Forms
             colunas_permitidas_keywords = [
                 "carimbo de data/hora",
                 "gerente de venda",
@@ -148,7 +146,17 @@ else:
               if col == "_excel_row":
                 continue
               col_lower = str(col).lower()
-              if "ação" in col_lower or "não precisa" in col_lower:
+
+              # Filtro restrito para ignorar termos antigos/indesejados
+              if any(
+                  termo in col_lower
+                  for termo in [
+                      "ação",
+                      "não precisa",
+                      "quantidade do item bonificado",
+                      "do item bonificado",
+                  ]
+              ):
                 continue
 
               if any(kw in col_lower for kw in colunas_permitidas_keywords):
