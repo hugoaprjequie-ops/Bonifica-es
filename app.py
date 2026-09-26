@@ -131,13 +131,13 @@ else:
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
 
-            # Lista restrita estritamente às colunas solicitadas
+            # Lista restrita contendo exatamente as palavras-chave das colunas desejadas
             colunas_permitidas_keywords = [
                 "carimbo de data/hora",
                 "gerente de venda",
                 "código do rn responsável pelo pdv",
                 "código e nome do pdv",
-                "código, nome e quantidade do item bonificado",
+                "código, nome e quantidade",
                 "justificativa",
             ]
 
