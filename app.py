@@ -22,13 +22,22 @@ URL_SHEETS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTK_JV2DqYdKAO
 URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbyDyPmnIebm10Usav60IwsGLScLFDOTDyBBAd800pHIiQTK9PNoiNkdU3LHGqGsSjGO/exec"
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=10)
 def carregar_dados_sheets(url):
   if not url:
     return pd.DataFrame()
   try:
     df = pd.read_csv(url)
+    # Guarda o número real da linha no Google Sheets (linha 1 = cabeçalho, dados começam na 2)
     df["_excel_row"] = range(2, len(df) + 2)
+
+    # Garante que a coluna Status existe e preenche linhas vazias com 'Solicitações'
+    if "Status" not in df.columns:
+      df["Status"] = "Solicitações"
+    else:
+      df["Status"] = df["Status"].fillna("Solicitações")
+      df["Status"] = df["Status"].replace("", "Solicitações")
+
     return df
   except Exception as e:
     st.error(f"Erro ao carregar dados do Sheets: {e}")
@@ -50,10 +59,6 @@ if st.sidebar.button("Atualizar Dados do Sheets"):
   else:
     st.warning("Por favor, insira a URL_SHEETS_CSV no código do aplicativo.")
 
-# Garante a existência da coluna de Status
-if not df.empty and "Status" not in df.columns:
-  df["Status"] = "Solicitações"
-
 # Identifica a coluna de data/carimbo
 coluna_data = None
 if not df.empty:
@@ -70,8 +75,11 @@ if not df.empty:
 st.sidebar.header("Filtros")
 
 if not df.empty and coluna_data:
-  df[coluna_data] = pd.to_datetime(df[coluna_data], errors="coerce")
-  datas_disponiveis = df[coluna_data].dt.date.dropna().unique()
+  # Converte a coluna de data de forma segura ignorando erros
+  df["_data_formatada"] = pd.to_datetime(
+      df[coluna_data], errors="coerce"
+  ).dt.date
+  datas_disponiveis = df["_data_formatada"].dropna().unique()
   datas_disponiveis = sorted(datas_disponiveis, reverse=True)
 
   opcoes_data = ["Todas as Datas"] + [str(d) for d in datas_disponiveis]
@@ -86,7 +94,7 @@ if not df.empty and coluna_data:
   )
 
   if data_escolhida != "Todas as Datas":
-    df_filtrado_data = df[df[coluna_data].dt.date.astype(str) == data_escolhida]
+    df_filtrado_data = df[df["_data_formatada"].astype(str) == data_escolhida]
   else:
     df_filtrado_data = df
 else:
@@ -131,7 +139,6 @@ else:
           with st.expander(titulo_card):
             col1, col2 = st.columns(2)
 
-            # Palavras-chave exatas correspondentes aos campos do Forms
             colunas_permitidas_keywords = [
                 "carimbo de data/hora",
                 "gerente de venda",
@@ -144,7 +151,7 @@ else:
 
             colunas_para_exibir = []
             for col in df.columns:
-              if col == "_excel_row":
+              if col in ["_excel_row", "_data_formatada", "Status"]:
                 continue
               col_lower = str(col).lower()
 
